@@ -1,6 +1,8 @@
 package com.pierre.inventory.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
@@ -54,4 +56,8 @@ public class Product {
     public boolean isActive() {
         return active;
     }
+
+    public void updatePrice(BigDecimal price) { this.price = price; }
+
+    public void setActive(boolean active) { this.active = active; }
 }
