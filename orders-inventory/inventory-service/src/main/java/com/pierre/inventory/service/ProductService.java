@@ -3,6 +3,7 @@ package com.pierre.inventory.service;
 import com.pierre.inventory.dto.*;
 import com.pierre.inventory.entity.Product;
 import com.pierre.inventory.exception.ProductNotFoundException;
+import com.pierre.inventory.exception.StockDeductionException;
 import com.pierre.inventory.repository.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -104,6 +105,25 @@ public class ProductService {
                 () -> new ProductNotFoundException(id)
         );
         product.setActive(request.active());
+
+        return toResponse(product);
+    }
+
+    @Transactional
+    public ProductResponse updateStock(long id, UpdateProductStockRequest request){
+        Product product = repository.findById(id).orElseThrow(
+                () -> new ProductNotFoundException(id)
+        );
+
+        int quantity = request.quantity();
+
+        if(!product.isActive()){
+            throw new StockDeductionException("Product is not active");
+        }
+        if(product.getStock() < quantity){
+            throw new StockDeductionException("Not enough items in stock");
+        }
+        product.deductStock(quantity);
 
         return toResponse(product);
     }

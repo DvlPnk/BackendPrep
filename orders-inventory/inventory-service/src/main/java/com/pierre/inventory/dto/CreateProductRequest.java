@@ -10,12 +10,12 @@ public record CreateProductRequest(
         String name,
 
         @NotNull(message = "Product price must be provided")
-        @DecimalMin("0.00")
+        @DecimalMin(value = "0.00", message = "Product price must be zero or greater")
         @Digits(integer = 10, fraction = 2)
         BigDecimal price,
 
         @NotNull(message = "Product stock must be provided")
-        @Min(message = "Product stock must be zero or greater", value = 0)
+        @Min(value = 0, message = "Product stock must be zero or greater")
         Integer stock
 ) {
 }

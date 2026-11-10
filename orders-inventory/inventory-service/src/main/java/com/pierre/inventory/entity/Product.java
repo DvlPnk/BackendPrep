@@ -27,6 +27,10 @@ public class Product {
     @Column(nullable = false)
     private boolean active;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     protected Product(){
     }
 
@@ -60,4 +64,6 @@ public class Product {
     public void updatePrice(BigDecimal price) { this.price = price; }
 
     public void setActive(boolean active) { this.active = active; }
+
+    public void deductStock(int quantity) { stock -= quantity; }
 }

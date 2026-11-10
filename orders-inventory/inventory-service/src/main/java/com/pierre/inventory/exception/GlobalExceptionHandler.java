@@ -1,5 +1,7 @@
 package com.pierre.inventory.exception;
 
+import org.springframework.beans.factory.parsing.Problem;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,7 +22,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleValidation(MethodArgumentNotValidException exception){
         List<String> errors = new ArrayList<>();
         for(var error : exception.getBindingResult().getFieldErrors()){
-            errors.add(error.getField() + ":" + error.getDefaultMessage());
+            errors.add(error.getField() + ": " + error.getDefaultMessage());
         }
 
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
@@ -29,5 +31,15 @@ public class GlobalExceptionHandler {
 
         problem.setProperty("errors", errors);
         return problem;
+    }
+
+    @ExceptionHandler(StockDeductionException.class)
+    public ProblemDetail handleStockException(StockDeductionException exception){
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception){
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Product changed while processing the request");
     }
 }
