@@ -1,0 +1,7 @@
+CREATE TABLE orders (
+    order_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+);
