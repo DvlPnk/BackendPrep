@@ -2,9 +2,13 @@ package com.pierre.inventory.service;
 
 import com.pierre.inventory.dto.*;
 import com.pierre.inventory.entity.Product;
+import com.pierre.inventory.entity.StockDeduction;
+import com.pierre.inventory.exception.IdempotencyKeyMismatchException;
 import com.pierre.inventory.exception.ProductNotFoundException;
 import com.pierre.inventory.exception.StockDeductionException;
 import com.pierre.inventory.repository.ProductRepository;
+import com.pierre.inventory.repository.StockDeductionRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -13,13 +17,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ProductService {
-    private final ProductRepository repository;
+    private final ProductRepository productRepository;
 
-    public ProductService(ProductRepository repository){
-        this.repository = repository;
+    private final StockDeductionRepository stockRepository;
+
+    private final EntityManager entityManager;
+
+    public ProductService(ProductRepository productRepository,
+                          StockDeductionRepository stockRepository,
+                          EntityManager entityManager){
+        this.productRepository = productRepository;
+        this.stockRepository = stockRepository;
+        this.entityManager = entityManager;
     }
 
     @Transactional
@@ -29,13 +42,13 @@ public class ProductService {
                 request.price(),
                 request.stock());
 
-        Product saved = repository.save(product);
+        Product saved = productRepository.save(product);
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public ProductResponse getProductById(long id){
-        Product product = repository.findById(id).orElseThrow(
+        Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
         return toResponse(product);
@@ -53,7 +66,7 @@ public class ProductService {
 
     @Transactional
     public ProductResponse updatePrice(long id, UpdateProductPriceRequest request){
-        Product product = repository.findById(id).orElseThrow(
+        Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
         product.updatePrice(request.price());
@@ -79,10 +92,10 @@ public class ProductService {
        Page<Product> products;
 
        if(active == null){
-           products = repository.findAll(pageable);
+           products = productRepository.findAll(pageable);
        }
        else{
-           products = repository.findByActive(active, pageable);
+           products = productRepository.findByActive(active, pageable);
        }
 
        List<ProductResponse> items = products.getContent()
@@ -101,7 +114,7 @@ public class ProductService {
 
     @Transactional
     public ProductResponse updateActive(long id, UpdateProductActiveRequest request){
-        Product product = repository.findById(id).orElseThrow(
+        Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
         product.setActive(request.active());
@@ -111,20 +124,35 @@ public class ProductService {
 
     @Transactional
     public ProductResponse updateStock(long id, UpdateProductStockRequest request){
-        Product product = repository.findById(id).orElseThrow(
+        Optional<StockDeduction> foundDeduction = stockRepository.findById(request.orderId());
+        int quantity = request.quantity();
+
+        if(foundDeduction.isPresent()){
+            if(quantity ==  foundDeduction.get().getQuantity()
+                    && id == foundDeduction.get().getProductId()){
+                Product product = productRepository.findById(id).orElseThrow(
+                        () -> new ProductNotFoundException(id)
+                );
+                return toResponse(product);
+            }
+            else{
+                throw new IdempotencyKeyMismatchException(request.orderId());
+            }
+        }
+
+        Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
 
-        int quantity = request.quantity();
-
         if(!product.isActive()){
-            throw new StockDeductionException("Product is not active");
+            throw new StockDeductionException("PRODUCT_INACTIVE", "Product is not active");
         }
         if(product.getStock() < quantity){
-            throw new StockDeductionException("Not enough items in stock");
+            throw new StockDeductionException("INSUFFICIENT_STOCK", "Not enough items in stock");
         }
         product.deductStock(quantity);
 
+        entityManager.persist(new StockDeduction(request.orderId(), id, quantity));
         return toResponse(product);
     }
 }

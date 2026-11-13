@@ -15,7 +15,12 @@ import java.util.List;
 public class GlobalExceptionHandler {
     @ExceptionHandler(ProductNotFoundException.class)
     public ProblemDetail handleNotFound(ProductNotFoundException exception){
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND, exception.getMessage()
+        );
+
+        problem.setProperty("code", "PRODUCT_NOT_FOUND");
+        return problem;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -35,11 +40,30 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(StockDeductionException.class)
     public ProblemDetail handleStockException(StockDeductionException exception){
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, exception.getMessage()
+        );
+
+        problem.setProperty("code", exception.getCode());
+        return problem;
     }
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception){
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Product changed while processing the request");
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, "Product changed while processing the request"
+        );
+
+        problem.setProperty("code", "OPTIMISTIC_LOCK_CONFLICT");
+        return problem;
+    }
+
+    @ExceptionHandler(IdempotencyKeyMismatchException.class)
+    public ProblemDetail handleIdempotencyKeyMismatch(IdempotencyKeyMismatchException exception){
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT, exception.getMessage());
+
+        problem.setProperty("code", "IDEMPOTENCY_KEY_MISMATCH");
+        return problem;
     }
 }

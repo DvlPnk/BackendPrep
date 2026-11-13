@@ -58,4 +58,8 @@ public class Order {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public void changeStatus(OrderStatus status) {
+        this.status = status;
+    }
 }
