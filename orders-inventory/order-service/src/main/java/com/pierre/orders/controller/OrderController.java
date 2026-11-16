@@ -4,6 +4,7 @@ import com.pierre.orders.client.InventoryClient;
 import com.pierre.orders.dto.CreateOrderRequest;
 import com.pierre.orders.dto.OrderResponse;
 import com.pierre.orders.enums.OrderStatus;
+import com.pierre.orders.service.OrderProcessingService;
 import com.pierre.orders.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ProblemDetail;
@@ -21,9 +22,13 @@ public class OrderController {
     private final OrderService service;
     private final InventoryClient inventoryClient;
 
-    public OrderController(OrderService service, InventoryClient inventoryClient){
+    private final OrderProcessingService processingService;
+
+    public OrderController(OrderService service, InventoryClient inventoryClient,
+                           OrderProcessingService processingService){
         this.service = service;
         this.inventoryClient = inventoryClient;
+        this.processingService = processingService;
     }
 
     @GetMapping("/{id}")
@@ -40,40 +45,25 @@ public class OrderController {
         OrderResponse pending = service.createOrder(request);
         URI location = URI.create("/orders/" + pending.id());
 
-        try{
-            inventoryClient.deductStock(pending.id(), pending.productId(), pending.quantity());
-        }
-        catch (RestClientResponseException exception) {
-            Object code = null;
-            try {
-                ProblemDetail problem = exception.getResponseBodyAs(ProblemDetail.class);
-                if (problem != null && problem.getProperties() != null) {
-                    code = problem.getProperties().get("code");
-                }
-            } catch (RestClientException decodingFailure) {
-                // Inventory returned an error body we couldn't read.
-            }
+        OrderResponse result = processingService.process(pending);
 
-            if ("PRODUCT_NOT_FOUND".equals(code)
-                    || "PRODUCT_INACTIVE".equals(code)
-                    || "INSUFFICIENT_STOCK".equals(code)) {
-                OrderResponse rejected =
-                        service.updateStatus(pending.id(), OrderStatus.REJECTED);
-                return ResponseEntity.created(location).body(rejected);
-            }
-
-            if ("IDEMPOTENCY_KEY_MISMATCH".equals(code)) {
-                // Log pending.id() for investigation.
-            }
-
-            return ResponseEntity.accepted().location(location).body(pending);
-        }
-        catch (RestClientException exception){
-            return ResponseEntity.accepted().location(location).body(pending);
+        if (result.status() == OrderStatus.PENDING) {
+            return ResponseEntity.accepted().location(location).body(result);
         }
 
-        OrderResponse ready = service.updateStatus(pending.id(), OrderStatus.READY);
+        return ResponseEntity.created(location).body(result);
+    }
 
-        return ResponseEntity.created(location).body(ready);
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<OrderResponse> retryOrder(
+            @PathVariable("id") long id){
+        OrderResponse order = service.getOrderById(id);
+        OrderResponse result = processingService.process(order);
+
+        if (result.status() == OrderStatus.PENDING) {
+            return ResponseEntity.accepted().body(result);
+        }
+
+        return ResponseEntity.ok(result);
     }
 }

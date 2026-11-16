@@ -29,6 +29,9 @@ public class Order {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "next_retry_at")
+    private Instant nextRetryAt;
+
     protected Order(){
     }
 
@@ -61,5 +64,13 @@ public class Order {
 
     public void changeStatus(OrderStatus status) {
         this.status = status;
+    }
+
+    public Instant getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(Instant nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
     }
 }

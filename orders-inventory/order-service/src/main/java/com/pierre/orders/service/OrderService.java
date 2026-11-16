@@ -9,6 +9,10 @@ import com.pierre.orders.repository.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 @Service
 public class OrderService {
     private final OrderRepository repository;
@@ -23,6 +27,8 @@ public class OrderService {
             request.productId(),
             request.quantity()
         );
+
+        order.setNextRetryAt(Instant.now().plusSeconds(10));
         return toResponse(repository.save(order));
     }
 
@@ -45,10 +51,39 @@ public class OrderService {
 
     @Transactional
     public OrderResponse updateStatus(long id, OrderStatus status) {
-        Order order = repository.findById(id)
+        Order order = repository.findOrderById(id)
                 .orElseThrow(() -> new OrderNotFoundException(id));
 
-        order.changeStatus(status);
+        if (order.getStatus() == OrderStatus.PENDING) {
+            order.changeStatus(status);
+        }
         return toResponse(order);
+    }
+
+    @Transactional
+    public Optional<OrderResponse> claimDueRetry(long id){
+        return repository.findOrderById(id)
+                .filter(order -> order.getStatus() == OrderStatus.PENDING)
+                .flatMap(order -> {
+                    Instant now = Instant.now();
+                    Instant retryAt = order.getNextRetryAt();
+
+                    if(retryAt == null || retryAt.isAfter(now)){
+                        return Optional.empty();
+                    }
+
+                    order.setNextRetryAt(now.plusSeconds(10));
+                    return Optional.of(toResponse(order));
+                });
+    }
+
+    public List<Long> findDueRetryIds(){
+        return repository
+                .findTop20ByStatusAndNextRetryAtLessThanEqualOrderByNextRetryAtAscIdAsc(
+                        OrderStatus.PENDING, Instant.now()
+                )
+                .stream()
+                .map(Order::getId)
+                .toList();
     }
 }

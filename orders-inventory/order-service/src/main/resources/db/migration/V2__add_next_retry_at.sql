@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN next_retry_at TIMESTAMP(6) NULL;
