@@ -1,6 +1,7 @@
 package com.pierre.inventory;
 
 import com.pierre.inventory.repository.ProductRepository;
+import com.pierre.inventory.repository.StockDeductionRepository;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -23,9 +24,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ProductIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
-    private Long createdProductId;
+
     @Autowired
     private ProductRepository productRepository;
+    private Long createdProductId;
+
+    @Autowired
+    private StockDeductionRepository stockDeductionRepository;
 
     @Test
     void createProductAndRetrievesIt() throws Exception{
@@ -55,15 +60,6 @@ class ProductIntegrationTest {
                 .andExpect(content().json(
                     result.getResponse().getContentAsString()
                 ));
-    }
-
-    private String trackCreatedProduct(MvcResult result) {
-        String location = result.getResponse().getHeader("Location");
-        assertNotNull(location);
-        createdProductId = Long.parseLong(
-                location.substring(location.lastIndexOf('/') + 1)
-        );
-        return location;
     }
 
     @Test
@@ -235,10 +231,120 @@ class ProductIntegrationTest {
                 .andExpect(jsonPath("$.active").value(false));
     }
 
+    @Test
+    void deductStockAndCheckItsResult() throws Exception{
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(post(location + "/stock/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "orderId": 1,
+                            "quantity": 2
+                        }
+                        """
+                ))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock").value(8));
+
+        mockMvc.perform(post(location + "/stock/deductions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {
+                            "orderId": 1,
+                            "quantity": 2
+                        }
+                        """
+                        ))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock").value(8));
+    }
+
+    @Test
+    void rejectsDeductionWithDifferentQuantity() throws Exception{
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(post(location + "/stock/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                        "orderId": 1,
+                        "quantity": 2
+                        }
+                        """
+                ))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(location + "/stock/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                        "orderId": 1,
+                        "quantity": 3
+                        }
+                        """
+                ))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_MISMATCH"));
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock").value(8));
+    }
+
     @AfterEach
     void cleanUp(){
         if(createdProductId == null) return;
 
+        stockDeductionRepository.findById(1L)
+                .filter(deduction -> deduction.getProductId().equals(createdProductId))
+                .ifPresent(stockDeductionRepository::delete);
+
         productRepository.deleteById(createdProductId);
+    }
+
+    private String trackCreatedProduct(MvcResult result) {
+        String location = result.getResponse().getHeader("Location");
+        assertNotNull(location);
+        createdProductId = Long.parseLong(
+                location.substring(location.lastIndexOf('/') + 1)
+        );
+        return location;
     }
 }
