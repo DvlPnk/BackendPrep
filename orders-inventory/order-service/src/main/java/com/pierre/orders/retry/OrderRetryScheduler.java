@@ -15,7 +15,7 @@ public class OrderRetryScheduler {
         this.processingService = processingService;
     }
 
-    @Scheduled(fixedDelay = 5_000)
+    @Scheduled(fixedDelayString = "${orders.retry.delay-ms:5000}")
     public void retryPendingOrders(){
         for(long id : orderService.findDueRetryIds()){
             orderService.claimDueRetry(id)
