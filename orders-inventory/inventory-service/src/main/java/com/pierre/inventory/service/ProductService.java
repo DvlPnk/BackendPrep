@@ -1,5 +1,6 @@
 package com.pierre.inventory.service;
 
+import com.pierre.inventory.contracts.InventoryErrorCode;
 import com.pierre.inventory.dto.*;
 import com.pierre.inventory.entity.Product;
 import com.pierre.inventory.entity.StockDeduction;
@@ -145,10 +146,10 @@ public class ProductService {
         );
 
         if(!product.isActive()){
-            throw new StockDeductionException("PRODUCT_INACTIVE", "Product is not active");
+            throw new StockDeductionException(InventoryErrorCode.PRODUCT_INACTIVE.name(), "Product is not active");
         }
         if(product.getStock() < quantity){
-            throw new StockDeductionException("INSUFFICIENT_STOCK", "Not enough items in stock");
+            throw new StockDeductionException(InventoryErrorCode.INSUFFICIENT_STOCK.name(), "Not enough items in stock");
         }
         product.deductStock(quantity);
 
