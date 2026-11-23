@@ -1,0 +1,168 @@
+{
+  "info": {
+    "_postman_id": "b23afa11-4d24-40b8-86fb-754acb358cfa",
+    "name": "Order-Inventory",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17450369"
+  },
+  "item": [
+    {
+      "name": "Create product",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Product was created\", function () {\r\n    pm.response.to.have.status(201);\r\n});\r\n\r\npm.test(\"Product has the expected values\", function () {\r\n    const product = pm.response.json();\r\n\r\n    pm.expect(product.id).to.be.a(\"number\");\r\n    pm.expect(product.name).to.eql(\"Keyboard\");\r\n    pm.expect(product.stock).to.eql(10);\r\n    pm.expect(product.active).to.eql(true);\r\n\r\n    pm.collectionVariables.set(\"productId\", product.id); // Store the product ID for future use\r\n});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"name\": \"Keyboard\",\r\n  \"price\": 120.50,\r\n  \"stock\": 10\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{inventoryUrl}}/products",
+          "host": [
+            "{{inventoryUrl}}"
+          ],
+          "path": [
+            "products"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Order was created\", function (){\r\n    pm.response.to.have.status(201);\r\n})\r\n\r\npm.test(\"Order is ready with the requested details\", function (){\r\n    const order = pm.response.json();\r\n\r\n    pm.expect(order.id).to.be.a(\"number\");\r\n    pm.expect(order.productId).to.eql(\r\n        Number(pm.collectionVariables.get(\"productId\"))\r\n    );\r\n    pm.expect(order.quantity).to.eql(2);\r\n    pm.expect(order.status).to.eql(\"READY\");\r\n\r\n    pm.collectionVariables.set(\"orderId\", order.id);\r\n})"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"productId\": {{productId}},\r\n  \"quantity\": 2\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{ordersUrl}}/orders",
+          "host": [
+            "{{ordersUrl}}"
+          ],
+          "path": [
+            "orders"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get product",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Product was retrieved\", function (){\r\n    pm.response.to.have.status(200);\r\n});\r\n\r\npm.test(\"Stock product decreased from 10 ot 8\", function (){\r\n    const product = pm.response.json(); \r\n    pm.expect(product.id).to.eql(\r\n        pm.collectionVariables.get(\"productId\")\r\n    );\r\n    pm.expect(product.stock).to.eql(8);\r\n})"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{inventoryUrl}}/products/{{productId}}",
+          "host": [
+            "{{inventoryUrl}}"
+          ],
+          "path": [
+            "products",
+            "{{productId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Retry order",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{ordersUrl}}/orders/{{orderId}}/retry",
+          "host": [
+            "{{ordersUrl}}"
+          ],
+          "path": [
+            "orders",
+            "{{orderId}}",
+            "retry"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get order",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{ordersUrl}}/orders/{{orderId}}",
+          "host": [
+            "{{ordersUrl}}"
+          ],
+          "path": [
+            "orders",
+            "{{orderId}}"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "inventoryUrl",
+      "value": ""
+    },
+    {
+      "key": "ordersUrl",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    }
+  ]
+}
