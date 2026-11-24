@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -15,6 +17,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -31,6 +34,9 @@ class ProductIntegrationTest {
 
     @Autowired
     private StockDeductionRepository stockDeductionRepository;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     @Test
     void createProductAndRetrievesIt() throws Exception{
@@ -326,6 +332,51 @@ class ProductIntegrationTest {
         mockMvc.perform(get(location))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.stock").value(8));
+    }
+
+    @Test
+    void updatingPriceEvictsCachedProduct() throws Exception{
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(120.5));
+
+        Cache cache = cacheManager.getCache("products");
+        assertNotNull(cache);
+
+        Cache.ValueWrapper cacheProduct = cache.get(createdProductId);
+        assertNotNull(cacheProduct);
+
+        mockMvc.perform(patch(location + "/price")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"price": 150.0 }
+                        """))
+                .andExpect(status().isOk());
+
+        assertNull(cache.get(createdProductId));
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(150));
+
+        assertNotNull(cache.get(createdProductId));
     }
 
     @AfterEach
