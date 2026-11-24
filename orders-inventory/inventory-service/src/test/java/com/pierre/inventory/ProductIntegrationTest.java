@@ -374,7 +374,7 @@ class ProductIntegrationTest {
 
         mockMvc.perform(get(location))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.price").value(150));
+                .andExpect(jsonPath("$.price").value(150.0));
 
         assertNotNull(cache.get(createdProductId));
     }
