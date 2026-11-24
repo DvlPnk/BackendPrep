@@ -46,6 +46,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'com.pierre:inventory-contracts:0.1.0'
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
@@ -57,4 +59,10 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+
+	testLogging {
+		events "failed"
+		exceptionFormat "full"
+		showStandardStreams = true
+	}
 }

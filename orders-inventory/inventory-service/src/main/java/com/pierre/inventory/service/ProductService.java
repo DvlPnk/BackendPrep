@@ -10,6 +10,8 @@ import com.pierre.inventory.exception.StockDeductionException;
 import com.pierre.inventory.repository.ProductRepository;
 import com.pierre.inventory.repository.StockDeductionRepository;
 import jakarta.persistence.EntityManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -47,6 +49,7 @@ public class ProductService {
         return toResponse(saved);
     }
 
+    @Cacheable(cacheNames = "products", key = "#id")
     @Transactional(readOnly = true)
     public ProductResponse getProductById(long id){
         Product product = productRepository.findById(id).orElseThrow(
@@ -65,6 +68,7 @@ public class ProductService {
         );
     }
 
+    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updatePrice(long id, UpdateProductPriceRequest request){
         Product product = productRepository.findById(id).orElseThrow(
@@ -113,6 +117,7 @@ public class ProductService {
        );
     }
 
+    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateActive(long id, UpdateProductActiveRequest request){
         Product product = productRepository.findById(id).orElseThrow(
@@ -123,6 +128,7 @@ public class ProductService {
         return toResponse(product);
     }
 
+    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateStock(long id, UpdateProductStockRequest request){
         Optional<StockDeduction> foundDeduction = stockRepository.findById(request.orderId());
