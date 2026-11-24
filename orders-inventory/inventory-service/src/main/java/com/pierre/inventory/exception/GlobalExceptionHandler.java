@@ -1,6 +1,6 @@
 package com.pierre.inventory.exception;
 
-import org.springframework.beans.factory.parsing.Problem;
+import com.pierre.inventory.contracts.InventoryErrorCode;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND, exception.getMessage()
         );
 
-        problem.setProperty("code", "PRODUCT_NOT_FOUND");
+        problem.setProperty("code", InventoryErrorCode.PRODUCT_NOT_FOUND.name());
         return problem;
     }
 
@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT, "Product changed while processing the request"
         );
 
-        problem.setProperty("code", "OPTIMISTIC_LOCK_CONFLICT");
+        problem.setProperty("code", InventoryErrorCode.OPTIMISTIC_LOCK_CONFLICT.name());
         return problem;
     }
 
@@ -63,7 +63,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.CONFLICT, exception.getMessage());
 
-        problem.setProperty("code", "IDEMPOTENCY_KEY_MISMATCH");
+        problem.setProperty("code", InventoryErrorCode.IDEMPOTENCY_KEY_MISMATCH.name());
         return problem;
     }
 }
