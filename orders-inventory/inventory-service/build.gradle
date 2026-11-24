@@ -24,8 +24,21 @@ java {
 }
 
 repositories {
-	mavenLocal()
 	mavenCentral()
+
+	maven{
+		name = "GithubPackages"
+		url = uri("https://maven.pkg.github.com/dvlpnk/BackendPrep")
+
+		credentials{
+			username = System.getenv("GITHUB_ACTOR")
+			password = System.getenv("GITHUB_TOKEN")
+		}
+
+		content {
+			includeModule("com.pierre", "inventory-contracts")
+		}
+	}
 }
 
 dependencies {

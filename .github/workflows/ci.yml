@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   test:
@@ -63,9 +64,8 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Build and install inventory contracts
-        working-directory: orders-inventory/inventory-contracts
-        run: bash ./gradlew build publishToMavenLocal --no-daemon
-
       - name: Build and test
         run: bash ./gradlew build --no-daemon
+        env:
+          GITHUB_ACTOR: ${{github.actor}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
