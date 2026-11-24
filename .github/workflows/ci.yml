@@ -74,8 +74,15 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Monitor Redis commands
+        run: docker exec -d ${{ job.services.redis.id }} sh -c 'redis-cli MONITOR > /tmp/redis-monitor.log'
+
       - name: Build and test
         run: bash ./gradlew build --no-daemon
         env:
           GITHUB_ACTOR: ${{github.actor}}
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          
+      - name: Show Redis commands
+        if: always()
+        run: docker exec ${{ job.services.redis.id }} cat /tmp/redis-monitor.log
