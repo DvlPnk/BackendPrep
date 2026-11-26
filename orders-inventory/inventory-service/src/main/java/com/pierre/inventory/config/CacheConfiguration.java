@@ -1,7 +1,9 @@
 package com.pierre.inventory.config;
 
 import com.pierre.inventory.dto.ProductResponse;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -15,7 +17,7 @@ import java.time.Duration;
 
 @Configuration
 @EnableCaching
-public class CacheConfiguration {
+public class CacheConfiguration implements CachingConfigurer {
     @Bean
     public RedisCacheConfiguration redisCacheConfiguration() {
         var serializer =
@@ -43,5 +45,11 @@ public class CacheConfiguration {
                 .cacheDefaults(redisCacheConfiguration)
                 .transactionAware()
                 .build();
+    }
+
+    @Bean
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new RedisCacheErrorHandler();
     }
 }
