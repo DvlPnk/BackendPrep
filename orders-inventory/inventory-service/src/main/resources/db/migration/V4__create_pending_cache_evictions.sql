@@ -1,0 +1,6 @@
+CREATE TABLE pending_cache_evictions (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    product_id BIGINT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);

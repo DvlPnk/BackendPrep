@@ -2,11 +2,13 @@ package com.pierre.inventory.service;
 
 import com.pierre.inventory.contracts.InventoryErrorCode;
 import com.pierre.inventory.dto.*;
+import com.pierre.inventory.entity.PendingCacheEviction;
 import com.pierre.inventory.entity.Product;
 import com.pierre.inventory.entity.StockDeduction;
 import com.pierre.inventory.exception.IdempotencyKeyMismatchException;
 import com.pierre.inventory.exception.ProductNotFoundException;
 import com.pierre.inventory.exception.StockDeductionException;
+import com.pierre.inventory.repository.PendingCacheEvictionRepository;
 import com.pierre.inventory.repository.ProductRepository;
 import com.pierre.inventory.repository.StockDeductionRepository;
 import jakarta.persistence.EntityManager;
@@ -28,14 +30,22 @@ public class ProductService {
 
     private final StockDeductionRepository stockRepository;
 
+    private final PendingCacheEvictionRepository pendingCacheEvictionRepository;
+
     private final EntityManager entityManager;
+
+    private final CacheProductReader cacheProductReader;
 
     public ProductService(ProductRepository productRepository,
                           StockDeductionRepository stockRepository,
-                          EntityManager entityManager){
+                          PendingCacheEvictionRepository pendingCacheEvictionRepository,
+                          EntityManager entityManager,
+                          CacheProductReader cacheProductReader){
         this.productRepository = productRepository;
         this.stockRepository = stockRepository;
+        this.pendingCacheEvictionRepository = pendingCacheEvictionRepository;
         this.entityManager = entityManager;
+        this.cacheProductReader = cacheProductReader;
     }
 
     @Transactional
@@ -49,13 +59,19 @@ public class ProductService {
         return toResponse(saved);
     }
 
-    @Cacheable(cacheNames = "products", key = "#id")
     @Transactional(readOnly = true)
     public ProductResponse getProductById(long id){
-        Product product = productRepository.findById(id).orElseThrow(
-                () -> new ProductNotFoundException(id)
-        );
-        return toResponse(product);
+        // Bypass the cache while an eviction is pending to reduce stale reads.
+        // This adds a database query to every lookup and does not eliminate
+        // all concurrency races. Kept here to demonstrate the tradeoff;
+        // accepting temporary staleness with a short TTL is another option.
+        if(pendingCacheEvictionRepository.existsByProductId(id)){
+            Product product = productRepository.findById(id).orElseThrow(
+                    () -> new ProductNotFoundException(id)
+            );
+            return toResponse(product);
+        }
+        return cacheProductReader.getById(id);
     }
 
     private ProductResponse toResponse(Product product) {
@@ -68,13 +84,13 @@ public class ProductService {
         );
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updatePrice(long id, UpdateProductPriceRequest request){
         Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
         product.updatePrice(request.price());
+        pendingCacheEvictionRepository.save(new PendingCacheEviction(id));
         return toResponse(product);
     }
 
@@ -117,18 +133,16 @@ public class ProductService {
        );
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateActive(long id, UpdateProductActiveRequest request){
         Product product = productRepository.findById(id).orElseThrow(
                 () -> new ProductNotFoundException(id)
         );
         product.setActive(request.active());
-
+        pendingCacheEvictionRepository.save(new PendingCacheEviction(id));
         return toResponse(product);
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateStock(long id, UpdateProductStockRequest request){
         Optional<StockDeduction> foundDeduction = stockRepository.findById(request.orderId());
@@ -160,6 +174,7 @@ public class ProductService {
         product.deductStock(quantity);
 
         entityManager.persist(new StockDeduction(request.orderId(), id, quantity));
+        pendingCacheEvictionRepository.save(new PendingCacheEviction(id));
         return toResponse(product);
     }
 }

@@ -1,7 +1,11 @@
 package com.pierre.inventory;
 
+import com.pierre.inventory.dto.ProductResponse;
+import com.pierre.inventory.entity.PendingCacheEviction;
+import com.pierre.inventory.repository.PendingCacheEvictionRepository;
 import com.pierre.inventory.repository.ProductRepository;
 import com.pierre.inventory.repository.StockDeductionRepository;
+import com.pierre.inventory.service.CacheEvictionWorker;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -10,14 +14,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -37,6 +45,9 @@ class ProductIntegrationTest {
 
     @Autowired
     private CacheManager cacheManager;
+
+    @Autowired
+    private CacheEvictionWorker cacheEvictionWorker;
 
     @Test
     void createProductAndRetrievesIt() throws Exception{
@@ -370,6 +381,7 @@ class ProductIntegrationTest {
                         """))
                 .andExpect(status().isOk());
 
+        cacheEvictionWorker.processPendingEvictions();
         assertNull(cache.get(createdProductId));
 
         mockMvc.perform(get(location))
@@ -377,6 +389,117 @@ class ProductIntegrationTest {
                 .andExpect(jsonPath("$.price").value(150.0));
 
         assertNotNull(cache.get(createdProductId));
+    }
+
+    @Test
+    void pendingEvictionBypassesStaleCachedProduct() throws Exception{
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(120.5));
+
+        mockMvc.perform(patch(location + "/price")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"price": 150.0 }
+                        """))
+                .andExpect(status().isOk());
+
+        Cache cache = cacheManager.getCache("products");
+        assertNotNull(cache);
+
+        ProductResponse cachedProduct =
+                cache.get(createdProductId, ProductResponse.class);
+
+        assertNotNull(cachedProduct);
+        assertEquals(
+                0,
+                cachedProduct.price().compareTo(new BigDecimal("120.50"))
+        );
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(150.0));
+
+        cacheEvictionWorker.processPendingEvictions();
+        assertNull(cache.get(createdProductId));
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(150.0));
+
+        cachedProduct =
+                cache.get(createdProductId, ProductResponse.class);
+
+        assertNotNull(cachedProduct);
+
+        assertEquals(
+                0,
+                cachedProduct.price().compareTo(new BigDecimal("150.00"))
+        );
+    }
+
+    @Test
+    void failedEvictionKeepsPendingRecord() throws Exception{
+        PendingCacheEvictionRepository repository =
+                mock(PendingCacheEvictionRepository.class);
+        CacheManager manager = mock(CacheManager.class);
+        Cache cache = mock(Cache.class);
+
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(120.5));
+
+        PendingCacheEviction eviction = new PendingCacheEviction(createdProductId);
+
+        when(repository.findTop50ByOrderByIdAsc())
+                .thenReturn(List.of(eviction));
+
+        when(manager.getCache("products"))
+                .thenReturn(cache);
+
+        when(cache.evictIfPresent(createdProductId))
+                .thenThrow(new RedisConnectionFailureException("Redis unavailable"));
+
+        CacheEvictionWorker worker =
+                new CacheEvictionWorker(repository, manager);
+
+        worker.processPendingEvictions();
+        verify(cache).evictIfPresent(createdProductId);
+        verify(repository, never()).deleteById(any());
     }
 
     @AfterEach
