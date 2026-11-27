@@ -1,6 +1,8 @@
 package com.pierre.inventory;
 
 import com.pierre.inventory.dto.ProductResponse;
+import com.pierre.inventory.entity.PendingCacheEviction;
+import com.pierre.inventory.repository.PendingCacheEvictionRepository;
 import com.pierre.inventory.repository.ProductRepository;
 import com.pierre.inventory.repository.StockDeductionRepository;
 import com.pierre.inventory.service.CacheEvictionWorker;
@@ -12,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,8 +22,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -448,6 +453,53 @@ class ProductIntegrationTest {
                 0,
                 cachedProduct.price().compareTo(new BigDecimal("150.00"))
         );
+    }
+
+    @Test
+    void failedEvictionKeepsPendingRecord() throws Exception{
+        PendingCacheEvictionRepository repository =
+                mock(PendingCacheEvictionRepository.class);
+        CacheManager manager = mock(CacheManager.class);
+        Cache cache = mock(Cache.class);
+
+        ResultActions response = mockMvc.perform(post("/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "name": "Keyboard",
+                            "price": 120.50,
+                            "stock": 10
+                        }
+                        """
+                ));
+
+        MvcResult result = response
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String location = trackCreatedProduct(result);
+
+        mockMvc.perform(get(location))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(120.5));
+
+        PendingCacheEviction eviction = new PendingCacheEviction(createdProductId);
+
+        when(repository.findTop50ByOrderByIdAsc())
+                .thenReturn(List.of(eviction));
+
+        when(manager.getCache("products"))
+                .thenReturn(cache);
+
+        when(cache.evictIfPresent(createdProductId))
+                .thenThrow(new RedisConnectionFailureException("Redis unavailable"));
+
+        CacheEvictionWorker worker =
+                new CacheEvictionWorker(repository, manager);
+
+        worker.processPendingEvictions();
+        verify(cache).evictIfPresent(createdProductId);
+        verify(repository, never()).deleteById(any());
     }
 
     @AfterEach
