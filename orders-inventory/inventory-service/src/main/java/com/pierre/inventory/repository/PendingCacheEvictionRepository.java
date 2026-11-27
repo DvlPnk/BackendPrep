@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface PendingCacheEvictionRepository extends JpaRepository<PendingCacheEviction, Long> {
     List<PendingCacheEviction> findTop50ByOrderByIdAsc();
+
+    boolean existsByProductId(Long productId);
 }

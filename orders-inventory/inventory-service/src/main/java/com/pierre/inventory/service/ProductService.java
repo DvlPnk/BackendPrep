@@ -34,14 +34,18 @@ public class ProductService {
 
     private final EntityManager entityManager;
 
+    private final CacheProductReader cacheProductReader;
+
     public ProductService(ProductRepository productRepository,
                           StockDeductionRepository stockRepository,
                           PendingCacheEvictionRepository pendingCacheEvictionRepository,
-                          EntityManager entityManager){
+                          EntityManager entityManager,
+                          CacheProductReader cacheProductReader){
         this.productRepository = productRepository;
         this.stockRepository = stockRepository;
         this.pendingCacheEvictionRepository = pendingCacheEvictionRepository;
         this.entityManager = entityManager;
+        this.cacheProductReader = cacheProductReader;
     }
 
     @Transactional
@@ -55,13 +59,19 @@ public class ProductService {
         return toResponse(saved);
     }
 
-    @Cacheable(cacheNames = "products", key = "#id")
     @Transactional(readOnly = true)
     public ProductResponse getProductById(long id){
-        Product product = productRepository.findById(id).orElseThrow(
-                () -> new ProductNotFoundException(id)
-        );
-        return toResponse(product);
+        // Bypass the cache while an eviction is pending to reduce stale reads.
+        // This adds a database query to every lookup and does not eliminate
+        // all concurrency races. Kept here to demonstrate the tradeoff;
+        // accepting temporary staleness with a short TTL is another option.
+        if(pendingCacheEvictionRepository.existsByProductId(id)){
+            Product product = productRepository.findById(id).orElseThrow(
+                    () -> new ProductNotFoundException(id)
+            );
+            return toResponse(product);
+        }
+        return cacheProductReader.getById(id);
     }
 
     private ProductResponse toResponse(Product product) {
@@ -74,7 +84,6 @@ public class ProductService {
         );
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updatePrice(long id, UpdateProductPriceRequest request){
         Product product = productRepository.findById(id).orElseThrow(
@@ -124,7 +133,6 @@ public class ProductService {
        );
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateActive(long id, UpdateProductActiveRequest request){
         Product product = productRepository.findById(id).orElseThrow(
@@ -135,7 +143,6 @@ public class ProductService {
         return toResponse(product);
     }
 
-    @CacheEvict(cacheNames = "products", key = "#id")
     @Transactional
     public ProductResponse updateStock(long id, UpdateProductStockRequest request){
         Optional<StockDeduction> foundDeduction = stockRepository.findById(request.orderId());
